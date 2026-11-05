@@ -1,0 +1,93 @@
+rules_version = '2';
+// Reglas de seguridad de MandaoYa.
+// Pégalas en: Consola de Firebase › Firestore Database › Reglas › Publicar.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(uid())); }
+    function hasProfile() { return signedIn() && exists(/databases/$(database)/documents/users/$(uid())); }
+    function me() { return get(/databases/$(database)/documents/users/$(uid())).data; }
+    function approvedAs(r) { return hasProfile() && me().role == r && me().approved == true; }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+    // Administradores: se crean a mano en la consola (ID del documento = ID del usuario)
+    match /admins/{id} {
+      allow read: if signedIn() && uid() == id;
+      allow write: if false;
+    }
+
+    // Ajustes generales y tarifas por sector: los lee cualquiera, solo el admin los cambia
+    match /config/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /zones/{id}  { allow read: if true; allow write: if isAdmin(); }
+
+    // Usuarios
+    match /users/{id} {
+      // Cada quien ve su perfil; los datos de tenderos y domiciliarios son visibles para usuarios registrados;
+      // los datos de clientes solo los ve el admin.
+      allow read: if signedIn() && (uid() == id || isAdmin() || resource.data.role in ['tendero', 'domiciliario']);
+      allow create: if signedIn() && uid() == id
+        && request.resource.data.role in ['cliente', 'tendero', 'domiciliario', 'admin']
+        && (request.resource.data.role != 'admin' || isAdmin())
+        && request.resource.data.approved == (request.resource.data.role in ['cliente', 'admin']);
+      // Nadie se auto-aprueba ni se cambia el rol
+      allow update: if isAdmin()
+        || (signedIn() && uid() == id && !changed().hasAny(['role', 'approved', 'approvedAt', 'rejected']));
+      allow delete: if isAdmin() || (signedIn() && uid() == id);
+    }
+
+    // Tiendas (el ID de la tienda es el ID de su dueño)
+    match /stores/{id} {
+      allow read: if true;
+      allow create: if signedIn() && uid() == id
+        && request.resource.data.ownerUid == id && request.resource.data.approved == false;
+      allow update: if isAdmin()
+        || (signedIn() && uid() == id && !changed().hasAny(['approved', 'ownerUid']));
+      allow delete: if isAdmin();
+    }
+
+    // Pedidos
+    match /orders/{id} {
+      // Leer un pedido por su enlace de seguimiento (el ID es aleatorio y difícil de adivinar)
+      allow get: if true;
+
+      // Listados: cada rol solo ve lo suyo; los domiciliarios aprobados ven los que buscan domiciliario
+      allow list: if signedIn() && (
+        isAdmin()
+        || resource.data.storeId == uid()
+        || resource.data.clientUid == uid()
+        || resource.data.courierUid == uid()
+        || (resource.data.status == 'buscando' && approvedAs('domiciliario'))
+      );
+
+      allow create: if signedIn() && request.resource.data.courierUid == null && (
+        // Cliente: pedido a una tienda (la tienda confirma) o mandado (va directo a domiciliarios)
+        (request.resource.data.createdBy == 'cliente' && request.resource.data.clientUid == uid() && (
+            (request.resource.data.type == 'tienda' && request.resource.data.status == 'solicitado')
+         || (request.resource.data.type == 'mandado' && request.resource.data.status == 'buscando' && request.resource.data.storeId == null)))
+        // Tienda aprobada: domicilio creado desde la tienda
+        || (request.resource.data.createdBy == 'tienda' && request.resource.data.storeId == uid() && approvedAs('tendero'))
+      );
+
+      allow update: if signedIn() && (
+        isAdmin()
+        // La tienda maneja sus pedidos
+        || (resource.data.storeId != null && resource.data.storeId == uid())
+        // Un domiciliario aprobado toma un pedido libre (solo se lo puede asignar a sí mismo)
+        || (resource.data.status == 'buscando' && resource.data.courierUid == null && approvedAs('domiciliario')
+            && request.resource.data.courierUid == uid() && request.resource.data.status == 'asignado')
+        // El domiciliario asignado avanza el pedido y comparte su ubicación
+        || (resource.data.courierUid == uid() && request.resource.data.courierUid == uid()
+            && request.resource.data.status in ['asignado', 'recogido', 'entregado']
+            && changed().hasOnly(['status', 'active', 'courierLoc', 'times', 'pinOk', 'issue', 'issueAt']))
+        // El cliente puede cancelar antes de que lo recojan, y calificar al final
+        || (resource.data.clientUid != null && resource.data.clientUid == uid() && (
+            (resource.data.status in ['solicitado', 'preparando', 'buscando'] && request.resource.data.status == 'cancelado'
+              && changed().hasOnly(['status', 'active', 'cancelReason', 'cancelBy', 'times']))
+         || (resource.data.status == 'entregado' && changed().hasOnly(['rating']))))
+      );
+      allow delete: if isAdmin();
+    }
+  }
+}
