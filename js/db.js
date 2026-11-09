@@ -116,8 +116,12 @@ export async function createFirebaseDB(config) {
   const app = initializeApp(config);
   const auth = A.getAuth(app);
   let fs;
-  try { fs = F.initializeFirestore(app, { ignoreUndefinedProperties: true, localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }); }
-  catch (e) { fs = F.initializeFirestore(app, { ignoreUndefinedProperties: true }); }
+  // experimentalForceLongPolling: usa peticiones HTTP normales en vez del canal de streaming
+  // (Listen/channel). Algunos antivirus, VPN con filtro o redes bloquean ese streaming y la app
+  // no puede leer la base de datos (error ERR_BLOCKED_BY_CLIENT). Con long-polling eso se evita.
+  const COMMON = { ignoreUndefinedProperties: true, experimentalForceLongPolling: true };
+  try { fs = F.initializeFirestore(app, { ...COMMON, localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }); }
+  catch (e) { fs = F.initializeFirestore(app, COMMON); }
 
   const toQ = (c, filters = []) => F.query(F.collection(fs, c), ...filters.map(([f, op, v]) => F.where(f, op, v)));
   const snapList = s => s.docs.map(d => ({ id: d.id, ...d.data() }));
