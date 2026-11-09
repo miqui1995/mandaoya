@@ -185,6 +185,7 @@ function showWelcome() {
       <button class="role" data-r="tendero"><span>🏪</span><b>Tengo una tienda</b><small>Recibe pedidos y solicita domiciliarios</small></button>
       <button class="role" data-r="domiciliario"><span>🛵</span><b>Soy domiciliario</b><small>Haz domicilios y carreras, y gana por cada una</small></button>
     </div>
+    ${!demo ? `<p class="center" style="margin-top:14px">¿Ya tienes cuenta? <button class="link" id="haveAccount">Iniciar sesión</button></p>` : ''}
     ${demo ? `<div class="demoBox"><h3>Modo demo</h3>
       <p class="note">Los datos viven solo en este teléfono. Abre varias pestañas de Safari con roles distintos para probar el flujo completo.</p>
       <div class="chips">${[['demo_c1', '🛍️ María (cliente)'], ['demo_t1', '🏪 Tienda Doña Rosa'], ['demo_t2', '🏪 Droguería'], ['demo_d1', '🛵 Carlos (moto)'], ['demo_d2', '🛵 Yesid (a pie)'], ['demo_admin', '⚙️ Admin']]
@@ -192,8 +193,79 @@ function showWelcome() {
   </div>`;
   $('#app').onclick = async e => {
     const u = e.target.closest('[data-u]'); const r = e.target.closest('[data-r]');
+    if (e.target.closest('#haveAccount')) { $('#app').onclick = null; return loginFlow(); }
     if (u) { $('#app').onclick = null; await ctx.db.useIdentity(u.dataset.u); route(); }
     if (r) { if (demo && !ctx.db.uid) await ctx.db.newIdentity(); register(r.dataset.r); }
+  };
+}
+
+// ---------- Inicio de sesión por teléfono (SMS) ----------
+function smsErr(e) {
+  const c = e.code || e.message || '';
+  if (/invalid-verification-code|invalid-code/i.test(c)) return 'El código es incorrecto. Revísalo e intenta de nuevo.';
+  if (/code-expired/i.test(c)) return 'El código venció. Pide uno nuevo.';
+  if (/too-many-requests/i.test(c)) return 'Demasiados intentos. Espera unos minutos y vuelve a probar.';
+  if (/quota-exceeded/i.test(c)) return 'Se agotó el cupo de SMS por hoy. Avisa al administrador.';
+  if (/invalid-phone-number/i.test(c)) return 'El número no es válido. Debe tener 10 dígitos (3xx xxx xxxx).';
+  if (/captcha|recaptcha/i.test(c)) return 'No se pudo verificar el navegador. Recarga la página e intenta de nuevo.';
+  if (/unauthorized-domain|operation-not-allowed|not-allowed/i.test(c)) return 'El inicio por SMS aún no está activado en el servidor. Avisa al administrador.';
+  if (/network/i.test(c)) return 'Sin conexión. Revisa tu internet e intenta de nuevo.';
+  return 'No se pudo enviar el código: ' + c;
+}
+
+// Verifica un número por SMS. Devuelve una promesa con { uid, existing } o null si se cancela.
+function verifyPhoneSMS(phoneRaw) {
+  return new Promise(resolve => {
+    const e164 = ctx.db.toE164(phoneRaw);
+    const b = sheet(`<h2>Verifica tu número</h2>
+      <p class="note">Te enviaremos un código por SMS a <b>${esc(e164)}</b> para confirmar que es tuyo.</p>
+      <div id="vpStep">
+        <button class="btn primary block" id="vpSend">Enviar código por SMS</button>
+        <button class="link block" id="vpCancel">Cancelar</button>
+      </div>`);
+    const done = val => { closeSheet(); resolve(val); };
+    $('#vpCancel', b).onclick = () => done(null);
+    $('#vpSend', b).onclick = async () => {
+      const btn = $('#vpSend', b); btn.disabled = true; btn.textContent = 'Enviando…';
+      try { await ctx.db.sendCode(e164, 'recap'); }
+      catch (e) { btn.disabled = false; btn.textContent = 'Enviar código por SMS'; return toast(smsErr(e), 5000); }
+      $('#vpStep', b).innerHTML = `<label class="f">Código que llegó por SMS a ${esc(e164)}</label>
+        <input class="in" id="vpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 dígitos">
+        <button class="btn primary block" id="vpOk">Confirmar</button>
+        <button class="link block" id="vpResend">No me llegó — reenviar</button>
+        <button class="link block" id="vpCancel2">Cambiar número / cancelar</button>`;
+      const code = $('#vpCode', b); code.focus();
+      $('#vpCancel2', b).onclick = () => done(null);
+      $('#vpResend', b).onclick = async () => { try { await ctx.db.sendCode(e164, 'recap'); toast('Código reenviado'); } catch (e) { toast(smsErr(e), 5000); } };
+      $('#vpOk', b).onclick = async () => {
+        const v = code.value.replace(/\D/g, '');
+        if (v.length < 6) return toast('Escribe el código de 6 dígitos');
+        const ok = $('#vpOk', b); ok.disabled = true; ok.textContent = 'Verificando…';
+        try { const r = await ctx.db.confirmCode(v); done(r); }
+        catch (e) { ok.disabled = false; ok.textContent = 'Confirmar'; toast(smsErr(e), 5000); }
+      };
+    };
+  });
+}
+
+async function loginFlow() {
+  const b = sheet(`<h2>Iniciar sesión</h2>
+    <p class="note">Entra con el <b>mismo celular</b> con el que te registraste. Así recuperas tu cuenta en este o en cualquier otro teléfono.</p>
+    <label class="f">Celular</label>
+    <input class="in" id="liPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="3xx xxx xxxx">
+    <button class="btn primary block" id="liGo">Continuar</button>
+    <button class="link block" id="liCancel">Volver</button>`);
+  $('#liCancel', b).onclick = () => { closeSheet(); showWelcome(); };
+  $('#liGo', b).onclick = async () => {
+    const phone = $('#liPhone', b).value.trim();
+    if (phone.replace(/\D/g, '').length < 10) return toast('Escribe tu celular (10 dígitos)');
+    closeSheet();
+    const r = await verifyPhoneSMS(phone);
+    if (!r) return showWelcome();
+    const u = await ctx.db.get('users', r.uid).catch(() => null);
+    if (u && u.role) return location.replace(location.pathname); // recarga limpia y entra a su rol
+    toast('No encontramos una cuenta con ese número. Regístrate para empezar.', 6000);
+    showWelcome();
   };
 }
 
@@ -265,7 +337,8 @@ async function register(role) {
     if (!name || phone.replace(/\D/g, '').length < 7) return toast('Escribe tu nombre y un celular válido');
     if (!$('#rOk').checked) return toast('Debes aceptar el tratamiento de datos');
     const user = { role, name, phone, approved: role === 'cliente', createdAt: Date.now() };
-    let inviteCode = null;
+    let inviteCode = null, storeData = null;
+    // --- 1) Validación local (antes de verificar el teléfono, para no gastar un SMS en balde) ---
     if (role === 'domiciliario') {
       const veh = $('#rVeh').value;
       const missing = [!req.selfie && 'selfie', !req.idPhoto && 'foto de la cédula', veh !== 'pie' && !req.vehiclePhoto && 'foto del vehículo', !req.gps && 'verificar GPS',
@@ -281,21 +354,33 @@ async function register(role) {
       Object.assign(user, { vehicle: veh, plate: $('#rPlate').value.trim().toUpperCase(), online: false, approved: auto, level: 'prueba', autoApproved: auto, inviteCode,
         balance: welcome, welcomeCredit: welcome,
         requirements: { selfie: true, idPhoto: true, vehiclePhoto: !!req.vehiclePhoto, gps: true, adult: true, terms: true } });
-      $('#rSave').disabled = true;
-      try { await ctx.db.set('courierDocs', ctx.db.uid, { selfie: req.selfie, idPhoto: req.idPhoto, vehiclePhoto: req.vehiclePhoto || null, gps: req.gps, createdAt: Date.now() }); }
-      catch (e) { $('#rSave').disabled = false; return toast('No se pudieron subir los documentos: ' + (e.message || e)); }
     }
     if (role === 'tendero') {
       const sname = $('#rStore').value.trim();
       if (!sname) return toast('Escribe el nombre de la tienda');
       if (!loc) return toast('Marca la ubicación de la tienda en el mapa');
-      await ctx.db.set('stores', ctx.db.uid, {
-        ownerUid: ctx.db.uid, name: sname, cat: $('#rCat').value, phone: $('#rSPhone').value.trim() || phone,
+      storeData = { name: sname, cat: $('#rCat').value, phone: $('#rSPhone').value.trim() || phone,
         zoneId: $('#rZone').value, ref: $('#rRef').value.trim(), hours: $('#rHours').value.trim(),
-        lat: loc.lat, lng: loc.lng, open: false, approved: false, createdAt: Date.now(),
-      });
+        lat: loc.lat, lng: loc.lng, open: false, approved: false, createdAt: Date.now() };
     }
+    // --- 2) Verificar el número por SMS (modo real). Fija la identidad definitiva (ctx.db.uid). ---
+    if (ctx.db.mode === 'firebase') {
+      const vr = await verifyPhoneSMS(phone);
+      if (!vr) return; // el usuario canceló
+      if (vr.existing) {
+        const ex = await ctx.db.get('users', vr.uid).catch(() => null);
+        if (ex && ex.role) { toast('Este número ya tiene una cuenta. Entrando…', 4000); return location.replace(location.pathname); }
+      }
+    }
+    // --- 3) Escrituras (ya con la identidad correcta) ---
     $('#rSave').disabled = true;
+    if (role === 'domiciliario') {
+      try { await ctx.db.set('courierDocs', ctx.db.uid, { selfie: req.selfie, idPhoto: req.idPhoto, vehiclePhoto: req.vehiclePhoto || null, gps: req.gps, createdAt: Date.now() }); }
+      catch (e) { $('#rSave').disabled = false; return toast('No se pudieron subir los documentos: ' + (e.message || e)); }
+    }
+    if (role === 'tendero') {
+      await ctx.db.set('stores', ctx.db.uid, { ownerUid: ctx.db.uid, ...storeData });
+    }
     try {
       await ctx.db.set('users', ctx.db.uid, user);
       if (inviteCode) { const inv = await ctx.db.get('invites', inviteCode); ctx.db.update('invites', inviteCode, { uses: (inv?.uses || 0) + 1 }).catch(() => { }); }

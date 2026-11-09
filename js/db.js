@@ -143,6 +143,42 @@ export async function createFirebaseDB(config) {
     // Acceso del administrador con correo y contraseña (creado en Firebase › Authentication)
     async signInEmail(email, pass) { const c = await A.signInWithEmailAndPassword(auth, email, pass); api.uid = c.user.uid; return c.user.uid; },
     async resetPassword(email) { await A.sendPasswordResetEmail(auth, email); },
+
+    // --- Inicio de sesión por teléfono (SMS) ---
+    // Normaliza a formato internacional E.164 para Colombia: +57 y 10 dígitos.
+    toE164(raw) {
+      let d = String(raw || '').replace(/[^\d+]/g, '');
+      if (d.startsWith('+')) return d;
+      d = d.replace(/\D/g, '');
+      if (d.startsWith('57') && d.length === 12) return '+' + d;
+      if (d.length === 10) return '+57' + d;
+      return '+' + d;
+    },
+    // Envía el código SMS. containerId = id de un <div> invisible para el reCAPTCHA.
+    async sendCode(phoneRaw, containerId) {
+      try { api._recaptcha && api._recaptcha.clear(); } catch (e) { }
+      api._recaptcha = new A.RecaptchaVerifier(auth, containerId, { size: 'invisible' });
+      api._confirm = await A.signInWithPhoneNumber(auth, api.toE164(phoneRaw), api._recaptcha);
+    },
+    // Confirma el código. Si la sesión actual es anónima, enlaza el teléfono a esa cuenta
+    // (conserva el mismo uid y sus datos). Si el número ya pertenece a otra cuenta, entra a esa.
+    // Devuelve { uid, existing } — existing=true cuando el número ya tenía cuenta.
+    async confirmCode(code) {
+      if (!api._confirm) throw new Error('Primero pide el código');
+      const cred = A.PhoneAuthProvider.credential(api._confirm.verificationId, code);
+      const cur = auth.currentUser;
+      let existing = false;
+      try {
+        if (cur && cur.isAnonymous) { const r = await A.linkWithCredential(cur, cred); api.uid = r.user.uid; }
+        else { const r = await A.signInWithCredential(auth, cred); api.uid = r.user.uid; existing = true; }
+      } catch (e) {
+        if (e.code === 'auth/credential-already-in-use' || e.code === 'auth/account-exists-with-different-credential') {
+          const r = await A.signInWithCredential(auth, cred); api.uid = r.user.uid; existing = true;
+        } else throw e;
+      }
+      api._confirm = null;
+      return { uid: api.uid, existing };
+    },
     newId: () => F.doc(F.collection(fs, 'x')).id,
     async get(c, id) { const d = await F.getDoc(F.doc(fs, c, id)); return d.exists() ? { id: d.id, ...d.data() } : null; },
     async add(c, obj) { const r = await F.addDoc(F.collection(fs, c), obj); return r.id; },

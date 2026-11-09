@@ -34,6 +34,7 @@ h2 small { font-size: 14px; color: var(--muted); font-weight: 500; }
 h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 20px 0 8px; }
 .note { font-size: 14px; color: var(--muted); }
 .link { background: none; border: 0; color: var(--brand); font-weight: 600; padding: 4px 0; }
+.link.block { display: block; width: 100%; text-align: center; margin-top: 8px; }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 12px; padding: 12px 14px;
   font-weight: 600; background: var(--soft); color: var(--fg); text-decoration: none; text-align: center; min-height: 46px; }
