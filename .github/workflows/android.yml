@@ -23,9 +23,13 @@ jobs:
           java-version: 21
 
       - uses: android-actions/setup-android@v3
+<<<<<<< HEAD
         with:
           # Sin esto, la acción intenta instalar el paquete 'tools' (ya eliminado por Google)
           # y falla con "Failed to find package 'tools'". Instalamos solo lo que el build necesita.
+=======
+              with:
+>>>>>>> 4f452de3e5e4ff9ca2e3a44abe7fa2189169d1fa
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Instalar dependencias
