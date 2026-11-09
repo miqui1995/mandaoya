@@ -4,16 +4,16 @@
 // (Consola de Firebase › Configuración del proyecto › Tus apps › SDK setup and configuration › Config).
 window.MANDAOYA_CONFIG = {
   firebase: null,
-  /* Ejemplo:
+  
   firebase: {
-    apiKey: "AIza...",
-    authDomain: "mandaoya-xxxx.firebaseapp.com",
-    projectId: "mandaoya-xxxx",
-    storageBucket: "mandaoya-xxxx.appspot.com",
-    messagingSenderId: "1234567890",
-    appId: "1:1234567890:web:abcdef"
+    apiKey: "AIzaSyBacNwOsGDJlL3bNirFqM77mkubmJvf8Ho",
+    authDomain: "mandaoya-7c278.firebaseapp.com",
+    projectId: "mandaoya-7c278",
+    storageBucket: "mandaoya-7c278.firebasestorage.app",
+    messagingSenderId: "467974402026",
+    appId: "1:467974402026:web:0d34128296183d1e958c93"
   },
-  */
+
   center: [1.69684, -78.24514], // San José, Roberto Payán
   // App Android: pon true cuando hayas agregado google-services.json (notificaciones push)
   nativePush: false,
