@@ -3,7 +3,6 @@ import { createLocalDB, createFirebaseDB } from './db.js';
 import { CFG, HOME, $, esc, toast, sheet, closeSheet, ask, pickLocation, STORE_CATS, VEHICLES, waLink, getGPS, haversine } from './ui.js';
 import { photoToDataURL } from './catalogo.js';
 import { initPush, isNative } from './native.js';
-import * as Lock from './lock.js';
 import * as Cliente from './cliente.js';
 import * as Tienda from './tienda.js';
 import * as Domi from './domi.js';
@@ -102,10 +101,6 @@ async function route() {
   if (location.hash === '#/carreras') { sessionStorage.setItem('mandaoya_tab', 'carrera'); history.replaceState(null, '', location.pathname); }
   if (/^#\/admin/.test(location.hash)) return adminGate();
   if (!ctx.db.uid) { if (ctx.db.mode === 'demo') return showWelcome(); await ctx.db.init(); }
-  // Candado local: solo cuentas reales (no anónimas) que ya configuraron un PIN.
-  if (ctx.db.mode === 'firebase' && !ctx.db.isAnonymous() && Lock.hasPin() && !Lock.isUnlocked()) {
-    return Lock.showLock(() => route(), forgotPinFlow);
-  }
   meUnsub && meUnsub();
   let first = true, lastKey = '';
   meUnsub = ctx.db.watchDoc('users', ctx.db.uid, me => {
@@ -123,11 +118,6 @@ async function route() {
     initPush(ctx);
     root.onclick = null; root.innerHTML = '';
     ctx.cleanup = R.mount(root, ctx);
-    // La primera vez, ofrecer crear un PIN para proteger la cuenta (no gasta SMS).
-    if (ctx.db.mode === 'firebase' && !Lock.hasPin()) {
-      let offered = false; try { offered = sessionStorage.getItem('mandaoya_pinOffered') === '1'; } catch (e) { }
-      if (!offered) { try { sessionStorage.setItem('mandaoya_pinOffered', '1'); } catch (e) { } setTimeout(() => { if (!Lock.hasPin()) Lock.setupPin({ force: false }); }, 800); }
-    }
   });
 }
 
@@ -144,7 +134,6 @@ function profileMenu() {
   const b = sheet(`<h2>${me ? esc(me.name) : 'MandaoYa'}</h2>
     ${me ? `<p class="note">${esc(ROLE_LABEL[me.role] || '')} · ${esc(me.phone || '')}</p>` : ''}
     ${me && me.role !== 'admin' ? '<button class="btn block" id="pmEdit">Editar mis datos</button>' : ''}
-    ${me && me.role !== 'admin' && ctx.db.mode === 'firebase' ? '<button class="btn block" id="pmSec">🔒 Seguridad (PIN y huella)</button>' : ''}
     ${ctx.db.mode === 'demo' ? '<button class="btn block" id="pmSwitch">Cambiar de usuario (demo)</button><button class="btn block danger" id="pmReset">Reiniciar datos de demo</button>' : ''}
     ${me ? `<button class="btn block danger" id="pmOut">Cerrar sesión</button>` : ''}
     <p class="note center">MandaoYa · ${ctx.db.mode === 'demo' ? 'Modo demo (datos solo en este teléfono)' : 'Conectado'}<br>
@@ -152,7 +141,6 @@ function profileMenu() {
   b.onclick = async e => {
     const id = e.target.id;
     if (id === 'pmEdit') { closeSheet(); editProfile(); }
-    if (id === 'pmSec') { closeSheet(); Lock.securityMenu(); }
     if (id === 'pmSwitch') { closeSheet(); meUnsub && meUnsub(); meUnsub = null; ctx.me = null; await ctx.db.signOut(); location.hash = ''; showWelcome(); }
     if (id === 'pmReset') { if (await ask('¿Reiniciar la demo?', 'Se borran todos los pedidos y usuarios de prueba.', 'Reiniciar', true)) { await ctx.db.resetDemo(); location.reload(); } }
     if (id === 'pmOut') {
@@ -160,7 +148,6 @@ function profileMenu() {
       if (me?.role === 'admin') { meUnsub && meUnsub(); meUnsub = null; ctx.me = null; await ctx.db.signOut(); location.hash = ctx.db.mode === 'firebase' ? '#/admin' : ''; if (ctx.db.mode === 'firebase') location.reload(); else showWelcome(); return; }
       if (ctx.db.mode === 'firebase') {
         if (!(await ask('¿Cerrar sesión?', 'Saldrás de tu cuenta en este teléfono. Podrás volver a entrar con tu mismo número de celular y recuperas todo: tu cuenta, tu saldo y tu historial. No se borra nada.', 'Cerrar sesión', true))) return;
-        Lock.clearLock();
         await ctx.db.signOut(); location.hash = ''; location.reload();
       } else { meUnsub && meUnsub(); meUnsub = null; ctx.me = null; await ctx.db.signOut(); location.hash = ''; showWelcome(); }
     }
@@ -278,30 +265,6 @@ async function loginFlow() {
     if (u && u.role) return location.replace(location.pathname); // recarga limpia y entra a su rol
     toast('No encontramos una cuenta con ese número. Regístrate para empezar.', 6000);
     showWelcome();
-  };
-}
-
-// Olvidó el PIN: confirma su identidad por SMS y crea un PIN nuevo.
-async function forgotPinFlow() {
-  const back = () => Lock.showLock(() => route(), forgotPinFlow);
-  const b = sheet(`<h2>Olvidé mi PIN</h2>
-    <p class="note">Para crear un PIN nuevo, confirma tu número por SMS (igual que al entrar en un teléfono nuevo).</p>
-    <label class="f">Tu celular</label>
-    <input class="in" id="fpPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="3xx xxx xxxx">
-    <button class="btn primary block" id="fpGo">Enviar código</button>
-    <button class="link block" id="fpCancel">Volver</button>`);
-  $('#fpCancel', b).onclick = () => { closeSheet(); back(); };
-  $('#fpGo', b).onclick = async () => {
-    const phone = $('#fpPhone', b).value.trim();
-    if (phone.replace(/\D/g, '').length < 10) return toast('Escribe tu celular (10 dígitos)');
-    closeSheet();
-    const r = await verifyPhoneSMS(phone);
-    if (!r) return back();
-    const u = await ctx.db.get('users', r.uid).catch(() => null);
-    if (!u || !u.role) { toast('Ese número no tiene cuenta. Regístrate.', 6000); return showWelcome(); }
-    Lock.clearLock();
-    await Lock.setupPin({ force: true });
-    location.replace(location.pathname);
   };
 }
 
