@@ -54,7 +54,7 @@ label.f { display: block; font-size: 14px; color: var(--muted); margin: 12px 0 5
 .in { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); font-size: 16px; }
 textarea.in { min-height: 70px; resize: vertical; }
 textarea.in.big { min-height: 110px; }
-.in.pin { font-size: 32px; letter-spacing: 12px; text-align: center; font-weight: 700; }
+.in.pincode { font-size: 32px; letter-spacing: 12px; text-align: center; font-weight: 700; }
 .in.money { width: 110px; flex: 0 0 auto; }
 .in.date { width: auto; padding: 8px; }
 .check { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0; font-size: 14px; color: var(--muted); }
@@ -170,3 +170,78 @@ button.card:active { transform: scale(.99); }
 #toast { position: fixed; z-index: 2000; left: 50%; bottom: calc(var(--safe-b) + 24px); transform: translateX(-50%); background: #111827; color: #fff;
   padding: 11px 16px; border-radius: 12px; font-size: 15px; max-width: 92vw; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
 .leaflet-control-attribution { font-size: 10px; }
+
+/* ---- catálogo ---- */
+.tabs button { font-size: 15px; }
+.storeHead { margin-bottom: 8px; } .storeHead h2 { margin-bottom: 2px; } .storeHead small { color: var(--muted); }
+.chips.scrollx { flex-wrap: nowrap; overflow-x: auto; margin: 10px -16px; padding: 0 16px; -webkit-overflow-scrolling: touch; }
+.chips.scrollx .chip { flex: 0 0 auto; }
+.pgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (min-width: 560px) { .pgrid { grid-template-columns: repeat(3, 1fr); } }
+.pcard { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+.pcard.in { border: 2px solid var(--brand); }
+.pcard img, .pcard .ph { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.pcard .ph { display: flex; align-items: center; justify-content: center; font-size: 40px; background: var(--brand-soft); }
+.pinfo { padding: 8px 10px 4px; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.pinfo b { font-size: 14.5px; line-height: 1.25; }
+.pinfo small { color: var(--muted); font-size: 12.5px; line-height: 1.25; }
+.pinfo .price { font-weight: 800; color: var(--fg); margin-top: auto; padding-top: 4px; }
+.addbtn { margin: 6px 10px 10px; border: 0; border-radius: 10px; padding: 9px; font-weight: 700; background: var(--brand-soft); color: var(--brand-d); }
+.qty { display: flex; align-items: center; justify-content: space-between; margin: 6px 10px 10px; background: var(--brand); color: #fff; border-radius: 10px; }
+.qty button { border: 0; background: none; color: #fff; font-size: 22px; font-weight: 700; width: 44px; height: 38px; }
+.cartSpacer { height: 84px; }
+.cartBar { position: fixed; z-index: 750; left: 12px; right: 12px; bottom: calc(var(--safe-b) + 12px); max-width: 696px; margin: 0 auto;
+  display: flex; align-items: center; gap: 12px; border: 0; border-radius: 16px; padding: 14px 16px; background: var(--brand); color: #fff; font-size: 17px;
+  box-shadow: 0 8px 24px rgba(234,88,12,.45); }
+.cartBar b:nth-of-type(1) { flex: 1; text-align: left; }
+.cnt2 { background: #fff; color: var(--brand); border-radius: 8px; min-width: 28px; padding: 2px 6px; font-weight: 800; }
+.pthumb { width: 46px; height: 46px; border-radius: 10px; object-fit: cover; flex: 0 0 auto; }
+.pthumb.ph { display: flex; align-items: center; justify-content: center; font-size: 24px; background: var(--brand-soft); }
+.list li.soldout { opacity: .55; }
+.photoPick { width: 100%; aspect-ratio: 4 / 3; max-height: 240px; border: 2px dashed var(--line); border-radius: 14px; display: flex; align-items: center; justify-content: center;
+  overflow: hidden; text-align: center; color: var(--muted); font-size: 32px; }
+.photoPick img { width: 100%; height: 100%; object-fit: cover; }
+.photoPick small { font-size: 14px; }
+
+/* ---- requisitos domiciliario ---- */
+.reqs { display: grid; gap: 8px; }
+.req { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 10px; text-align: left; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.req .rq-ico { font-size: 24px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--soft); border-radius: 12px; }
+.req small { display: block; color: var(--muted); font-size: 13px; }
+.req .rq-st { font-size: 13px; font-weight: 700; color: var(--muted); }
+.req.done { border-color: var(--ok); } .req.done .rq-st { color: var(--ok); } .req.done .rq-ico { background: #dcfce7; }
+.card.trial { background: #fffbeb; border-color: #fcd34d; }
+@media (prefers-color-scheme: dark) { .card.trial { background: #1f1a08; } }
+.bar { height: 8px; border-radius: 4px; background: var(--line); margin-top: 8px; overflow: hidden; }
+.bar span { display: block; height: 100%; background: var(--brand); }
+.docs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.docs figure { margin: 0; } .docs img { width: 100%; border-radius: 10px; display: block; }
+.docs figcaption { font-size: 13px; color: var(--muted); text-align: center; margin-top: 4px; }
+.mono { font-family: ui-monospace, Menlo, monospace; letter-spacing: 1px; }
+
+/* ---- saldo prepagado ---- */
+.card.balance { background: linear-gradient(135deg, #fff7ed, #ffedd5); border-color: #fdba74; }
+@media (prefers-color-scheme: dark) { .card.balance { background: #2a1608; } }
+.card.balance.low { border-color: #f59e0b; }
+.card.balance.empty { background: #fef2f2; border-color: #fca5a5; }
+@media (prefers-color-scheme: dark) { .card.balance.empty { background: #2a0f0f; } }
+.balAmt { font-size: 30px; font-variant-numeric: tabular-nums; }
+.balChip { display: inline-block; margin-left: 6px; font-size: 12.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #ffedd5; color: #c2410c; cursor: pointer; }
+.balChip.empty { background: #fee2e2; color: #b91c1c; }
+.pos { color: var(--ok); } .neg { color: var(--bad); }
+.receipt { width: 100%; max-height: 320px; object-fit: contain; border-radius: 10px; margin: 8px 0; background: var(--soft); }
+.photoPick.small { max-height: 160px; font-size: 26px; }
+.mono.big { font-size: 22px; }
+.leaflet-top, .leaflet-bottom { z-index: 400; }
+
+/* ---- carreras ---- */
+.offer { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--brand-soft); border-radius: 14px; padding: 8px; }
+.offer b { font-size: 28px; font-variant-numeric: tabular-nums; }
+.offer .btn { width: 56px; font-size: 24px; }
+.offerCard { border-color: #fdba74; }
+b.big { font-size: 22px; }
+.tgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; flex: 0 0 60%; }
+.tgrid label { font-size: 12px; color: var(--muted); }
+.tgrid .in { padding: 8px; font-size: 14px; }
+.list li[data-rt] { flex-wrap: wrap; }

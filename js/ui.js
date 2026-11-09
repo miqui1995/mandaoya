@@ -35,7 +35,7 @@ export function haversine(a, b) {
 }
 export const fdist = m => m == null ? '' : m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m';
 
-export const VEHICLES = { moto: ['Moto', 18], bici: ['Bicicleta', 12], pie: ['A pie', 4.5], lancha: ['Lancha', 15] };
+export const VEHICLES = { moto: ['Moto', 18], carro: ['Carro', 22], bici: ['Bicicleta', 12], pie: ['A pie', 4.5], lancha: ['Lancha', 15] };
 // Minutos estimados recorriendo calles (factor 1.4 sobre la línea recta) + margen
 export function travelMin(meters, vehicle = 'moto') {
   if (meters == null) return null;
@@ -78,6 +78,7 @@ export function toast(msg, ms = 2800) {
 }
 let sheetClose = null;
 export function sheet(html, onClose) {
+  $('#sheetBody').onclick = null; // quita el manejador de la hoja anterior
   $('#sheetBody').innerHTML = html; sheetClose = onClose || null;
   $('#sheet').classList.remove('hidden'); $('#sheetBg').classList.remove('hidden'); $('#sheet').scrollTop = 0;
   return $('#sheetBody');
@@ -99,7 +100,7 @@ export function ask(title, msg, okLabel = 'Aceptar', danger = false) {
 export function prompt4(title, msg) {
   return new Promise(res => {
     const b = sheet(`<h2>${esc(title)}</h2><p class="note">${msg}</p>
-      <input class="in pin" id="pinIn" inputmode="numeric" maxlength="4" autocomplete="one-time-code" placeholder="0000">
+      <input class="in pincode" id="pinIn" inputmode="numeric" maxlength="4" autocomplete="one-time-code" placeholder="0000">
       <div class="row actions"><button class="btn" data-a="no">Cancelar</button><button class="btn primary" data-a="ok">Confirmar</button></div>`, () => res(null));
     setTimeout(() => $('#pinIn').focus(), 100);
     b.onclick = e => { const a = e.target.dataset.a; if (!a) return; const v = $('#pinIn').value.trim(); sheetClose = null; closeSheet(); res(a === 'ok' ? v : null); };

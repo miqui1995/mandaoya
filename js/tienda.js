@@ -1,11 +1,14 @@
 // MandaoYa – interfaz del TENDERO
+import { mountStoreProducts } from './catalogo.js';
+import { mountTopupReview } from './recargas.js';
 import { $, esc, money, toast, ask, sheet, closeSheet, pickLocation, PAY, statusBadge, shortCode, pin4, dayKey, ago, hhmm, waLink, telLink, trackUrl, beep, VEHICLES } from './ui.js';
 
 export function mount(root, ctx) {
   const { db } = ctx;
+  let prodStop = null;
   let tab = 'pedidos', store = null, active = [], today = [], seen = null;
   root.innerHTML = `<div class="storeBar" id="tBar"></div>
-    <div class="tabs"><button data-t="pedidos" class="on">Pedidos <span id="tCnt" class="cnt hidden"></span></button><button data-t="nuevo">+ Domicilio</button><button data-t="caja">Hoy</button></div>
+    <div class="tabs ${ctx.me.socio ? 'scroll' : ''}"><button data-t="pedidos" class="on">Pedidos <span id="tCnt" class="cnt hidden"></span></button><button data-t="nuevo">+ Domicilio</button><button data-t="productos">Productos</button><button data-t="caja">Hoy</button>${ctx.me.socio ? '<button data-t="recargas">Recargas</button>' : ''}</div>
     <div id="tBody" class="pad"></div>`;
   const body = $('#tBody', root);
   root.querySelector('.tabs').onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; setTab(b.dataset.t); };
@@ -42,7 +45,7 @@ export function mount(root, ctx) {
       ${o.courierName ? `<small>🛵 ${esc(o.courierName)} (${esc(VEHICLES[o.courierVehicle]?.[0] || '')}) · <a href="${telLink(o.courierPhone)}">Llamar</a> · <a href="${waLink(o.courierPhone, `Hola ${o.courierName}, sobre el pedido #${o.code}`)}" target="_blank">WhatsApp</a></small>` : ''}
       ${late ? `<div class="warn">Nadie lo ha aceptado en ${wait} min. ${ctx.settings.adminWhatsApp ? `<a href="${waLink(ctx.settings.adminWhatsApp, `Pedido #${o.code} de ${store?.name} lleva ${wait} min sin domiciliario`)}" target="_blank">Avisar al administrador</a>` : ''}</div>` : ''}
       <div class="acts">
-        ${o.status === 'solicitado' ? `<input class="in" type="number" inputmode="numeric" placeholder="Valor de los productos" data-sub="${o.id}">
+        ${o.status === 'solicitado' ? `<input class="in" type="number" inputmode="numeric" placeholder="Valor de los productos" data-sub="${o.id}" value="${o.subtotal ?? ''}">
             <div class="row"><button class="btn danger" data-a="reject">Rechazar</button><button class="btn primary" data-a="confirm">Confirmar</button></div>` : ''}
         ${o.status === 'preparando' ? `<button class="btn primary block" data-a="call">🛵 Pedir domiciliario</button>` : ''}
         ${o.status === 'asignado' ? `<button class="btn primary block" data-a="handed">Entregué el pedido al domiciliario</button>` : ''}
@@ -55,6 +58,7 @@ export function mount(root, ctx) {
   }
 
   function render() {
+    if (prodStop) { prodStop(); prodStop = null; }
     if (tab === 'pedidos') {
       const typed = {}; body.querySelectorAll('[data-sub]').forEach(i => { if (i.value) typed[i.dataset.sub] = i.value; });
       const focused = document.activeElement?.dataset?.sub;
@@ -63,6 +67,8 @@ export function mount(root, ctx) {
       for (const [id, v] of Object.entries(typed)) { const i = body.querySelector(`[data-sub="${id}"]`); if (i) i.value = v; }
       if (focused) body.querySelector(`[data-sub="${focused}"]`)?.focus();
     } else if (tab === 'nuevo') newForm();
+    else if (tab === 'productos') prodStop = mountStoreProducts(body, ctx);
+    else if (tab === 'recargas') prodStop = mountTopupReview(body, ctx, { asSocio: true });
     else caja();
   }
 
@@ -168,5 +174,5 @@ export function mount(root, ctx) {
   }
 
   render();
-  return () => { u0(); u1(); u2(); clearInterval(tick); body.onclick = null; };
+  return () => { if (prodStop) prodStop(); u0(); u1(); u2(); clearInterval(tick); body.onclick = null; };
 }

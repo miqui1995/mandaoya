@@ -1,15 +1,21 @@
 // MandaoYa – interfaz del CLIENTE
+import { mountCatalog, cartLines, cartTotal } from './catalogo.js';
+import { mountClientRide, ridesOn } from './carreras.js';
 import { $, esc, money, toast, pickLocation, STORE_CATS, PAY, statusBadge, shortCode, pin4, dayKey, ago } from './ui.js';
 
 export function mount(root, ctx) {
   const { db } = ctx;
-  let tab = 'pedir', stores = [], orders = [];
-  root.innerHTML = `<div class="tabs"><button data-t="pedir" class="on">Pedir</button><button data-t="mis">Mis pedidos <span id="cBadge" class="cnt hidden"></span></button></div>
+  let tab = 'pedir', stores = [], orders = [], view = 'list', catUnsub = null;
+  const carts = {};
+  const stopCat = () => { if (catUnsub) { catUnsub(); catUnsub = null; } };
+  let rideStop = null;
+  const startTab = sessionStorage.getItem('mandaoya_tab'); sessionStorage.removeItem('mandaoya_tab');
+  root.innerHTML = `<div class="tabs"><button data-t="pedir" class="on">Pedir</button>${ridesOn(ctx) ? '<button data-t="carrera">Carrera</button>' : ''}<button data-t="mis">Mis pedidos <span id="cBadge" class="cnt hidden"></span></button></div>
     <div id="cBody" class="pad"></div>`;
   const body = $('#cBody', root);
   root.querySelector('.tabs').onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; tab = b.dataset.t; root.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b)); render(); };
 
-  const u1 = db.watch('stores', [['approved', '==', true]], s => { stores = s; if (tab === 'pedir') render(); });
+  const u1 = db.watch('stores', [['approved', '==', true]], s => { stores = s; if (tab === 'pedir' && view === 'list') render(); });
   const u2 = db.watch('orders', [['clientUid', '==', db.uid]], o => {
     orders = o.sort((a, b) => b.createdAt - a.createdAt);
     const act = orders.filter(x => x.active).length;
@@ -18,6 +24,9 @@ export function mount(root, ctx) {
   });
 
   function render() {
+    stopCat(); view = 'list';
+    if (rideStop) { rideStop(); rideStop = null; }
+    if (tab === 'carrera') { view = 'ride'; rideStop = mountClientRide(body, ctx); return; }
     if (tab === 'pedir') {
       const list = [...stores].sort((a, b) => (b.open - a.open) || a.name.localeCompare(b.name));
       const act = orders.filter(o => o.active);
@@ -40,19 +49,33 @@ export function mount(root, ctx) {
   body.onclick = e => {
     const go = e.target.closest('[data-go]'); if (go) { location.hash = '#/seguir/' + go.dataset.go; return; }
     const s = e.target.closest('[data-s]');
-    if (s) { const st = stores.find(x => x.id === s.dataset.s); if (!st.open) return toast('Esta tienda está cerrada en este momento'); orderForm(st); }
+    if (s) { const st = stores.find(x => x.id === s.dataset.s); if (!st.open) return toast('Esta tienda está cerrada en este momento'); openStore(st); }
     if (e.target.closest('#cMandado')) orderForm(null);
   };
 
-  function orderForm(store) {
+  function openStore(st) {
+    stopCat(); view = 'catalog'; window.scrollTo(0, 0);
+    const cart = carts[st.id] = carts[st.id] || {};
+    catUnsub = mountCatalog(body, ctx, st, cart, {
+      onCheckout: () => { stopCat(); orderForm(st, cart); },
+      onBack: render,
+      onNoProducts: () => { stopCat(); orderForm(st, null); },
+    });
+  }
+
+  function orderForm(store, cart) {
+    view = 'form'; window.scrollTo(0, 0);
+    const hasCart = cart && Object.keys(cart).length > 0;
     const me = ctx.me; const addr = me.address || {};
     let dest = addr.lat ? { lat: addr.lat, lng: addr.lng } : null, pickup = null;
     const zoneOpts = ctx.zones.map(z => `<option value="${z.id}" ${addr.zoneId === z.id ? 'selected' : ''}>${esc(z.name)} — ${money(z.fee)}</option>`).join('');
     body.innerHTML = `<button class="link" id="oBack">‹ Volver</button>
       <h2>${store ? esc(store.name) : 'Nuevo mandado'}</h2>
       ${store ? `<p class="note">${esc(store.ref || '')}</p>` : ''}
-      <label class="f">${store ? '¿Qué necesitas?' : '¿Qué hay que hacer?'}</label>
-      <textarea class="in big" id="oItems" placeholder="${store ? 'Ej: 2 libras de arroz, 1 aceite de litro, 1 bolsa de leche' : 'Ej: recoger un paquete donde mi tía y traérmelo / comprar 1 pipeta de gas'}"></textarea>
+      ${hasCart ? `<div class="card"><small class="lbl">Tu pedido</small>${Object.values(cart).map(c => `<div class="rowb"><span>${c.qty} × ${esc(c.name)}</span><span>${money(c.qty * c.price)}</span></div>`).join('')}
+        <button class="link" id="oEditCart">Editar productos</button></div>` : ''}
+      <label class="f">${hasCart ? '¿Algo más que no esté en el catálogo? (opcional)' : store ? '¿Qué necesitas?' : '¿Qué hay que hacer?'}</label>
+      <textarea class="in ${hasCart ? '' : 'big'}" id="oItems" placeholder="${store ? 'Ej: 2 libras de arroz, 1 aceite de litro, 1 bolsa de leche' : 'Ej: recoger un paquete donde mi tía y traérmelo / comprar 1 pipeta de gas'}"></textarea>
       ${store ? '' : `<label class="f">¿Dónde se recoge o se compra?</label>
         <input class="in" id="oPickRef" placeholder="Ej: donde Don Pedro, al lado del muelle">
         <button class="btn block" id="oPickLoc">📍 Marcar en el mapa (opcional)</button>
@@ -77,27 +100,30 @@ export function mount(root, ctx) {
     const sum = () => {
       const est = store ? null : +($('#oEst')?.value || 0);
       $('#oSum').innerHTML = `<div class="rowb"><span>Domicilio</span><b>${money(fee())}</b></div>
-        ${store ? '<div class="rowb"><span>Productos</span><span>Lo confirma la tienda</span></div>' : est ? `<div class="rowb"><span>Compra aprox.</span><b>${money(est)}</b></div>` : ''}`;
+        ${hasCart ? `<div class="rowb"><span>Productos</span><b>${money(cartTotal(cart))}</b></div><div class="rowb total"><span>Total</span><b>${money(cartTotal(cart) + fee())}</b></div>` : store ? '<div class="rowb"><span>Productos</span><span>Lo confirma la tienda</span></div>' : est ? `<div class="rowb"><span>Compra aprox.</span><b>${money(est)}</b></div>` : ''}`;
     };
     sum();
     $('#oZone').onchange = sum; if ($('#oEst')) $('#oEst').oninput = sum;
-    $('#oBack').onclick = render;
+    $('#oBack').onclick = () => hasCart ? openStore(store) : render();
+    if ($('#oEditCart')) $('#oEditCart').onclick = () => openStore(store);
     $('#oPay').onclick = e => { const b = e.target.closest('[data-p]'); if (!b) return; pay = b.dataset.p; $('#oPay').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('#oCashW').classList.toggle('hidden', pay !== 'efectivo'); };
     $('#oLoc').onclick = async () => { const l = await pickLocation('¿Dónde entregamos?', dest); if (l) { dest = l; $('#oLoc').textContent = '✅ Ubicación marcada (cambiar)'; } };
     if ($('#oPickLoc')) $('#oPickLoc').onclick = async () => { const l = await pickLocation('¿Dónde se recoge?', pickup); if (l) { pickup = l; $('#oPickLoc').textContent = '✅ Punto de recogida marcado'; } };
     $('#oSend').onclick = async () => {
-      const items = $('#oItems').value.trim(), ref = $('#oRef').value.trim();
+      const extra = $('#oItems').value.trim(), ref = $('#oRef').value.trim();
+      const items = hasCart ? cartLines(cart) + (extra ? '\nAdemás: ' + extra : '') : extra;
       if (!items) return toast(store ? 'Escribe qué necesitas' : 'Describe el mandado');
       if (!ref && !dest) return toast('Escribe una referencia o marca tu ubicación');
       const z = zone(); const now = Date.now();
-      const est = store ? 0 : +($('#oEst').value || 0);
+      const est = store ? (hasCart ? cartTotal(cart) : 0) : +($('#oEst').value || 0);
       const o = {
         code: shortCode(), type: store ? 'tienda' : 'mandado', createdBy: 'cliente',
         storeId: store ? store.id : null, storeName: store ? store.name : null, storePhone: store ? store.phone : null,
         pickup: store ? { lat: store.lat, lng: store.lng, ref: store.ref || '' } : { ...(pickup || {}), ref: $('#oPickRef').value.trim() },
         clientUid: db.uid, clientName: me.name, clientPhone: me.phone,
         dest: { ...(dest || {}), ref, zoneId: z?.id || null, zoneName: z?.name || '' },
-        items, note: $('#oNote').value.trim(), subtotal: store ? null : est, fee: fee(), total: store ? null : est + fee(),
+        items, cart: hasCart ? Object.values(cart) : null, note: $('#oNote').value.trim(),
+        subtotal: store && !hasCart ? null : est, fee: fee(), total: store && !hasCart ? null : est + fee(),
         pay, payWith: pay === 'efectivo' ? +($('#oCash').value || 0) || null : null,
         status: store ? 'solicitado' : 'buscando', active: true, day: dayKey(now), pin: pin4(),
         createdAt: now, times: { [store ? 'solicitado' : 'buscando']: now }, courierUid: null,
@@ -106,11 +132,13 @@ export function mount(root, ctx) {
       try {
         const id = await db.add('orders', o);
         db.update('users', db.uid, { address: { lat: dest?.lat ?? null, lng: dest?.lng ?? null, ref, zoneId: z?.id || null } }).catch(() => { });
+        if (store) delete carts[store.id];
         toast('¡Pedido enviado!'); location.hash = '#/seguir/' + id;
       } catch (e) { $('#oSend').disabled = false; toast('No se pudo enviar: ' + (e.message || e)); }
     };
   }
 
   render();
-  return () => { u1(); u2(); body.onclick = null; };
+  if (startTab === 'carrera' && ridesOn(ctx)) { tab = 'carrera'; root.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === 'carrera')); render(); }
+  return () => { stopCat(); if (rideStop) rideStop(); u1(); u2(); body.onclick = null; };
 }

@@ -59,6 +59,8 @@ export function createLocalDB(seedFn) {
     },
     async newIdentity() { const u = 'demo_' + rid(10); await api.useIdentity(u); return u; },
     async signOut() { sessionStorage.removeItem('mandaoya_uid'); localStorage.removeItem('mandaoya_last_uid'); api.uid = null; },
+    isAnonymous: () => true,
+    async signInEmail() { await api.useIdentity('demo_admin'); return 'demo_admin'; },
     async resetDemo() { localStorage.removeItem(KEY); data = null; await api.signOut(); },
     newId: () => rid(),
     async get(c, id) { const d = col(c)[id]; return d ? { id, ...clone(d) } : null; },
@@ -91,6 +93,14 @@ export function createLocalDB(seedFn) {
       const patch = await fn(cur);
       if (patch) await api.update(c, id, patch);
     },
+    // Transacción con varios documentos: t.get / t.update / t.set
+    async runTx(fn) {
+      data = load() || data;
+      const writes = [];
+      const t = { get: (c, id) => api.get(c, id), update: (c, id, p) => writes.push(['u', c, id, p]), set: (c, id, d) => writes.push(['s', c, id, d]) };
+      await fn(t);
+      for (const [k, c, id, p] of writes) k === 'u' ? await api.update(c, id, p) : await api.set(c, id, p);
+    },
     async isAdmin() { return !!(await api.get('admins', api.uid)); },
   };
   return api;
@@ -98,7 +108,8 @@ export function createLocalDB(seedFn) {
 
 // ---------------- FIREBASE ----------------
 export async function createFirebaseDB(config) {
-  const base = `https://www.gstatic.com/firebasejs/${FB_VER}/`;
+  // SDK de Firebase incluido en la app (funciona sin depender de internet para cargarlo y dentro de la app Android)
+  const base = new URL('../vendor/firebase/', import.meta.url).href;
   const { initializeApp } = await import(base + 'firebase-app.js');
   const A = await import(base + 'firebase-auth.js');
   const F = await import(base + 'firebase-firestore.js');
@@ -123,6 +134,11 @@ export async function createFirebaseDB(config) {
       });
     },
     async signOut() { await A.signOut(auth); api.uid = null; },
+    isAnonymous: () => !auth.currentUser || auth.currentUser.isAnonymous,
+    email: () => auth.currentUser?.email || '',
+    // Acceso del administrador con correo y contraseña (creado en Firebase › Authentication)
+    async signInEmail(email, pass) { const c = await A.signInWithEmailAndPassword(auth, email, pass); api.uid = c.user.uid; return c.user.uid; },
+    async resetPassword(email) { await A.sendPasswordResetEmail(auth, email); },
     newId: () => F.doc(F.collection(fs, 'x')).id,
     async get(c, id) { const d = await F.getDoc(F.doc(fs, c, id)); return d.exists() ? { id: d.id, ...d.data() } : null; },
     async add(c, obj) { const r = await F.addDoc(F.collection(fs, c), obj); return r.id; },
@@ -142,6 +158,16 @@ export async function createFirebaseDB(config) {
         const d = await t.get(ref);
         const patch = await fn(d.exists() ? { id: d.id, ...d.data() } : null);
         if (patch) t.update(ref, patch);
+      });
+    },
+    async runTx(fn) {
+      await F.runTransaction(fs, async tr => {
+        const t = {
+          get: async (c, id) => { const d = await tr.get(F.doc(fs, c, id)); return d.exists() ? { id: d.id, ...d.data() } : null; },
+          update: (c, id, p) => tr.update(F.doc(fs, c, id), p),
+          set: (c, id, d) => tr.set(F.doc(fs, c, id), d),
+        };
+        await fn(t);
       });
     },
     async isAdmin() { try { return !!(await api.get('admins', api.uid)); } catch (e) { return false; } },
