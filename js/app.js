@@ -197,7 +197,7 @@ function showWelcome() {
       <button class="role" data-r="tendero"><span>🏪</span><b>Tengo una tienda</b><small>Recibe pedidos y solicita domiciliarios</small></button>
       <button class="role" data-r="domiciliario"><span>🛵</span><b>Soy domiciliario</b><small>Haz domicilios y carreras, y gana por cada una</small></button>
     </div>
-    ${!demo ? `<p class="center" style="margin-top:14px">¿Ya tienes cuenta? <button class="link" id="haveAccount">Iniciar sesión</button></p>` : ''}
+    ${!demo && CFG.smsLogin ? `<p class="center" style="margin-top:14px">¿Ya tienes cuenta? <button class="link" id="haveAccount">Iniciar sesión</button></p>` : ''}
     ${demo ? `<div class="demoBox"><h3>Modo demo</h3>
       <p class="note">Los datos viven solo en este teléfono. Abre varias pestañas de Safari con roles distintos para probar el flujo completo.</p>
       <div class="chips">${[['demo_c1', '🛍️ María (cliente)'], ['demo_t1', '🏪 Tienda Doña Rosa'], ['demo_t2', '🏪 Droguería'], ['demo_d1', '🛵 Carlos (moto)'], ['demo_d2', '🛵 Yesid (a pie)'], ['demo_admin', '⚙️ Admin']]
@@ -284,6 +284,10 @@ async function loginFlow() {
 // Olvidó el PIN: confirma su identidad por SMS y crea un PIN nuevo.
 async function forgotPinFlow() {
   const back = () => Lock.showLock(() => route(), forgotPinFlow);
+  if (!CFG.smsLogin) {
+    if (await ask('¿Olvidaste tu PIN?', 'Para restablecerlo necesitas cerrar sesión y volver a registrarte en este teléfono, o pedirle ayuda al administrador. (La recuperación por SMS no está activada.)', 'Entendido', false)) { }
+    return back();
+  }
   const b = sheet(`<h2>Olvidé mi PIN</h2>
     <p class="note">Para crear un PIN nuevo, confirma tu número por SMS (igual que al entrar en un teléfono nuevo).</p>
     <label class="f">Tu celular</label>
@@ -312,6 +316,7 @@ async function register(role) {
     <h2>${{ cliente: 'Crear mi cuenta', tendero: 'Registrar mi tienda', domiciliario: 'Registro de domiciliario' }[role]}</h2>
     <label class="f">Tu nombre</label><input class="in" id="rName" autocomplete="name" placeholder="Nombre y apellido">
     <label class="f">Celular / WhatsApp</label><input class="in" id="rPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="3xx xxx xxxx">
+    ${role !== 'cliente' ? `<label class="f">Número de cédula</label><input class="in" id="rCedula" inputmode="numeric" autocomplete="off" placeholder="Tu documento de identidad">` : ''}
     ${role === 'domiciliario' ? `<label class="f">¿En qué haces los domicilios?</label>
       <select class="in" id="rVeh">${Object.entries(VEHICLES).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select>
       <label class="f">Placa (si tiene)</label><input class="in" id="rPlate" placeholder="Opcional">
@@ -371,8 +376,11 @@ async function register(role) {
   $('#rSave').onclick = async () => {
     const name = $('#rName').value.trim(), phone = $('#rPhone').value.trim();
     if (!name || phone.replace(/\D/g, '').length < 7) return toast('Escribe tu nombre y un celular válido');
+    const cedula = $('#rCedula') ? $('#rCedula').value.trim() : '';
+    if (role !== 'cliente' && cedula.replace(/\D/g, '').length < 6) return toast('Escribe tu número de cédula');
     if (!$('#rOk').checked) return toast('Debes aceptar el tratamiento de datos');
     const user = { role, name, phone, approved: role === 'cliente', createdAt: Date.now() };
+    if (cedula) user.cedula = cedula;
     let inviteCode = null, storeData = null;
     // --- 1) Validación local (antes de verificar el teléfono, para no gastar un SMS en balde) ---
     if (role === 'domiciliario') {
@@ -399,8 +407,8 @@ async function register(role) {
         zoneId: $('#rZone').value, ref: $('#rRef').value.trim(), hours: $('#rHours').value.trim(),
         lat: loc.lat, lng: loc.lng, open: false, approved: false, createdAt: Date.now() };
     }
-    // --- 2) Verificar el número por SMS (modo real). Fija la identidad definitiva (ctx.db.uid). ---
-    if (ctx.db.mode === 'firebase') {
+    // --- 2) Verificar el número por SMS (solo si está activado el login por SMS). ---
+    if (ctx.db.mode === 'firebase' && CFG.smsLogin) {
       const vr = await verifyPhoneSMS(phone);
       if (!vr) return; // el usuario canceló
       if (vr.existing) {
