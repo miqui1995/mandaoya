@@ -191,7 +191,7 @@ function showWelcome() {
   setHeader('');
   const demo = ctx.db.mode === 'demo';
   $('#app').innerHTML = `<div class="pad welcome">
-    <div class="hero"><img src="icons/icon-192.png" alt=""><h1>MandaoYa</h1><p>Domicilios en ${esc(ctx.settings.town || 'Roberto Payán')}</p></div>
+    <div class="hero"><img src="icons/icon-192.png" alt=""><h1>MandaoYa</h1><p>Domicilios, mandados y carreras en tu pueblo</p></div>
     <div class="roles">
       <button class="role" data-r="cliente"><span>🛍️</span><b>Quiero pedir</b><small>Pide a las tiendas, mandados y carreras</small></button>
       <button class="role" data-r="tendero"><span>🏪</span><b>Tengo una tienda</b><small>Recibe pedidos y solicita domiciliarios</small></button>
@@ -374,9 +374,7 @@ async function register(role) {
       if (k === 'gps') {
         setSt('gps', false, 'Buscando…');
         try {
-          const g = await getGPS(15000); const km = haversine({ lat: HOME[0], lng: HOME[1] }, g) / 1000;
-          const max = ctx.settings.serviceRadiusKm || 30;
-          if (km > max) { setSt('gps', false, `Fuera de zona (${km.toFixed(0)} km)`); toast(`Debes estar a menos de ${max} km del pueblo para registrarte`); return; }
+          const g = await getGPS(15000);
           req.gps = { ...g, at: Date.now() }; setSt('gps', true, `✅ ±${g.acc} m`);
         } catch (err) { setSt('gps', false, 'Sin GPS'); toast('Activa la ubicación del celular para MandaoYa'); }
         return;
