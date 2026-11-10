@@ -197,7 +197,7 @@ function showWelcome() {
       <button class="role" data-r="tendero"><span>🏪</span><b>Tengo una tienda</b><small>Recibe pedidos y solicita domiciliarios</small></button>
       <button class="role" data-r="domiciliario"><span>🛵</span><b>Soy domiciliario</b><small>Haz domicilios y carreras, y gana por cada una</small></button>
     </div>
-    ${!demo && CFG.smsLogin ? `<p class="center" style="margin-top:14px">¿Ya tienes cuenta? <button class="link" id="haveAccount">Iniciar sesión</button></p>` : ''}
+    ${!demo ? `<p class="center" style="margin-top:14px">¿Ya tienes cuenta? <button class="link" id="haveAccount">Iniciar sesión</button></p>` : ''}
     ${demo ? `<div class="demoBox"><h3>Modo demo</h3>
       <p class="note">Los datos viven solo en este teléfono. Abre varias pestañas de Safari con roles distintos para probar el flujo completo.</p>
       <div class="chips">${[['demo_c1', '🛍️ María (cliente)'], ['demo_t1', '🏪 Tienda Doña Rosa'], ['demo_t2', '🏪 Droguería'], ['demo_d1', '🛵 Carlos (moto)'], ['demo_d2', '🛵 Yesid (a pie)'], ['demo_admin', '⚙️ Admin']]
@@ -262,22 +262,29 @@ function verifyPhoneSMS(phoneRaw) {
 
 async function loginFlow() {
   const b = sheet(`<h2>Iniciar sesión</h2>
-    <p class="note">Entra con el <b>mismo celular</b> con el que te registraste. Así recuperas tu cuenta en este o en cualquier otro teléfono.</p>
+    <p class="note">Entra con tu <b>celular</b> y tu <b>contraseña</b>. Recuperas tu cuenta y tu historial en cualquier teléfono.</p>
     <label class="f">Celular</label>
     <input class="in" id="liPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="3xx xxx xxxx">
-    <button class="btn primary block" id="liGo">Continuar</button>
+    <label class="f">Contraseña</label>
+    <input class="in" id="liPass" type="password" autocomplete="current-password">
+    <button class="btn primary block" id="liGo">Entrar</button>
+    <button class="link block" id="liForgot">Olvidé mi contraseña</button>
     <button class="link block" id="liCancel">Volver</button>`);
   $('#liCancel', b).onclick = () => { closeSheet(); showWelcome(); };
+  $('#liForgot', b).onclick = () => toast('Para restablecer tu contraseña, pídele ayuda al administrador.', 6000);
   $('#liGo', b).onclick = async () => {
-    const phone = $('#liPhone', b).value.trim();
+    const phone = $('#liPhone', b).value.trim(), pass = $('#liPass', b).value;
     if (phone.replace(/\D/g, '').length < 10) return toast('Escribe tu celular (10 dígitos)');
-    closeSheet();
-    const r = await verifyPhoneSMS(phone);
-    if (!r) return showWelcome();
-    const u = await ctx.db.get('users', r.uid).catch(() => null);
-    if (u && u.role) return location.replace(location.pathname); // recarga limpia y entra a su rol
-    toast('No encontramos una cuenta con ese número. Regístrate para empezar.', 6000);
-    showWelcome();
+    if (!pass) return toast('Escribe tu contraseña');
+    const go = $('#liGo', b); go.disabled = true; go.textContent = 'Entrando…';
+    try {
+      await ctx.db.signInPhone(phone, pass);
+      closeSheet();
+      location.replace(location.pathname); // recarga limpia y entra a su rol con su historial
+    } catch (e) {
+      go.disabled = false; go.textContent = 'Entrar';
+      toast(/user-not-found|invalid-login|invalid-credential|wrong-password/i.test(e.code || '') ? 'Celular o contraseña incorrectos' : 'No se pudo entrar: ' + (e.code || e.message), 6000);
+    }
   };
 }
 
@@ -285,8 +292,10 @@ async function loginFlow() {
 async function forgotPinFlow() {
   const back = () => Lock.showLock(() => route(), forgotPinFlow);
   if (!CFG.smsLogin) {
-    if (await ask('¿Olvidaste tu PIN?', 'Para restablecerlo necesitas cerrar sesión y volver a registrarte en este teléfono, o pedirle ayuda al administrador. (La recuperación por SMS no está activada.)', 'Entendido', false)) { }
-    return back();
+    if (await ask('¿Olvidaste tu PIN?', 'Cierra sesión y entra de nuevo con tu celular y contraseña; después creas un PIN nuevo.', 'Cerrar sesión y entrar', true)) {
+      Lock.clearLock(); await ctx.db.signOut(); location.hash = ''; location.reload();
+    } else back();
+    return;
   }
   const b = sheet(`<h2>Olvidé mi PIN</h2>
     <p class="note">Para crear un PIN nuevo, confirma tu número por SMS (igual que al entrar en un teléfono nuevo).</p>
@@ -317,6 +326,9 @@ async function register(role) {
     <label class="f">Tu nombre</label><input class="in" id="rName" autocomplete="name" placeholder="Nombre y apellido">
     <label class="f">Celular / WhatsApp</label><input class="in" id="rPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="3xx xxx xxxx">
     ${role !== 'cliente' ? `<label class="f">Número de cédula</label><input class="in" id="rCedula" inputmode="numeric" autocomplete="off" placeholder="Tu documento de identidad">` : ''}
+    <label class="f">Crea una contraseña</label><input class="in" id="rPass" type="password" autocomplete="new-password" placeholder="Mínimo 6 caracteres">
+    <label class="f">Repite la contraseña</label><input class="in" id="rPass2" type="password" autocomplete="new-password" placeholder="Igual que arriba">
+    <p class="note">Con tu celular y esta contraseña podrás entrar desde cualquier teléfono y ver tu historial.</p>
     ${role === 'domiciliario' ? `<label class="f">¿En qué haces los domicilios?</label>
       <select class="in" id="rVeh">${Object.entries(VEHICLES).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select>
       <label class="f">Placa (si tiene)</label><input class="in" id="rPlate" placeholder="Opcional">
@@ -378,6 +390,11 @@ async function register(role) {
     if (!name || phone.replace(/\D/g, '').length < 7) return toast('Escribe tu nombre y un celular válido');
     const cedula = $('#rCedula') ? $('#rCedula').value.trim() : '';
     if (role !== 'cliente' && cedula.replace(/\D/g, '').length < 6) return toast('Escribe tu número de cédula');
+    const pass = $('#rPass') ? $('#rPass').value : '';
+    if (ctx.db.mode === 'firebase') {
+      if (pass.length < 6) return toast('Crea una contraseña de al menos 6 caracteres');
+      if ($('#rPass2') && pass !== $('#rPass2').value) return toast('Las dos contraseñas no coinciden');
+    }
     if (!$('#rOk').checked) return toast('Debes aceptar el tratamiento de datos');
     const user = { role, name, phone, approved: role === 'cliente', createdAt: Date.now() };
     if (cedula) user.cedula = cedula;
@@ -407,13 +424,14 @@ async function register(role) {
         zoneId: $('#rZone').value, ref: $('#rRef').value.trim(), hours: $('#rHours').value.trim(),
         lat: loc.lat, lng: loc.lng, open: false, approved: false, createdAt: Date.now() };
     }
-    // --- 2) Verificar el número por SMS (solo si está activado el login por SMS). ---
-    if (ctx.db.mode === 'firebase' && CFG.smsLogin) {
-      const vr = await verifyPhoneSMS(phone);
-      if (!vr) return; // el usuario canceló
-      if (vr.existing) {
-        const ex = await ctx.db.get('users', vr.uid).catch(() => null);
-        if (ex && ex.role) { toast('Este número ya tiene una cuenta. Entrando…', 4000); return location.replace(location.pathname); }
+    // --- 2) Crear la cuenta con teléfono + contraseña (gratis, sin SMS). Fija la identidad (ctx.db.uid). ---
+    if (ctx.db.mode === 'firebase') {
+      $('#rSave').disabled = true;
+      try { await ctx.db.signUp(phone, pass); }
+      catch (e) {
+        $('#rSave').disabled = false;
+        if (e.code === 'phone-in-use') return toast('Ese número ya tiene cuenta. Entra con "Iniciar sesión".', 6000);
+        return toast(/weak-password/i.test(e.code || '') ? 'La contraseña es muy débil (mínimo 6)' : 'No se pudo crear la cuenta: ' + (e.code || e.message), 6000);
       }
     }
     // --- 3) Escrituras (ya con la identidad correcta) ---

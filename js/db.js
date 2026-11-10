@@ -144,6 +144,26 @@ export async function createFirebaseDB(config) {
     async signInEmail(email, pass) { const c = await A.signInWithEmailAndPassword(auth, email, pass); api.uid = c.user.uid; return c.user.uid; },
     async resetPassword(email) { await A.sendPasswordResetEmail(auth, email); },
 
+    // --- Cuenta de usuario con TELÉFONO + CONTRASEÑA (gratis, sin SMS) ---
+    // El teléfono es el "usuario". Internamente se usa un correo ficticio "<telefono>@mandaoya.app"
+    // para la autenticación por contraseña de Firebase, que es gratuita.
+    _phoneEmail(phone) { return api.toE164(phone).replace('+', '') + '@mandaoya.app'; },
+    // Crear cuenta. Si venía como anónimo, conserva el mismo uid y sus datos (link).
+    async signUp(phone, pass) {
+      const email = api._phoneEmail(phone);
+      const cur = auth.currentUser;
+      try {
+        if (cur && cur.isAnonymous) { const cred = A.EmailAuthProvider.credential(email, pass); const r = await A.linkWithCredential(cur, cred); api.uid = r.user.uid; }
+        else { const r = await A.createUserWithEmailAndPassword(auth, email, pass); api.uid = r.user.uid; }
+      } catch (e) {
+        if (/email-already-in-use|credential-already-in-use|account-exists/i.test(e.code || '')) { const err = new Error('phone-in-use'); err.code = 'phone-in-use'; throw err; }
+        throw e;
+      }
+      return api.uid;
+    },
+    // Entrar con teléfono + contraseña en cualquier dispositivo.
+    async signInPhone(phone, pass) { const c = await A.signInWithEmailAndPassword(auth, api._phoneEmail(phone), pass); api.uid = c.user.uid; return c.user.uid; },
+
     // --- Inicio de sesión por teléfono (SMS) ---
     // Normaliza a formato internacional E.164 para Colombia: +57 y 10 dígitos.
     toE164(raw) {
