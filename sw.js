@@ -1,5 +1,5 @@
 // MandaoYa service worker: la app abre sin señal; los datos los maneja Firestore (con caché propia)
-const APP_CACHE = 'mandaoya-app-v15';
+const APP_CACHE = 'mandaoya-app-v16';
 const TILE_CACHE = 'mandaoya-tiles-v1';
 const FILES = ['./', './index.html', './styles.css', './config.js', './manifest.webmanifest',
   './js/app.js', './js/db.js', './js/ui.js', './js/cliente.js', './js/tienda.js', './js/domi.js', './js/admin.js', './js/seguir.js', './js/catalogo.js', './js/recargas.js', './js/native.js', './js/carreras.js', './js/lock.js',

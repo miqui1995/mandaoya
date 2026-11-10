@@ -116,10 +116,10 @@ export async function createFirebaseDB(config) {
   const app = initializeApp(config);
   const auth = A.getAuth(app);
   let fs;
-  // experimentalForceLongPolling: usa peticiones HTTP normales en vez del canal de streaming
-  // (Listen/channel). Algunos antivirus, VPN con filtro o redes bloquean ese streaming y la app
-  // no puede leer la base de datos (error ERR_BLOCKED_BY_CLIENT). Con long-polling eso se evita.
-  const COMMON = { ignoreUndefinedProperties: true, experimentalForceLongPolling: true };
+  // experimentalAutoDetectLongPolling: usa el canal en tiempo real (rápido) por defecto, y SOLO
+  // cae a peticiones normales si detecta que la red/antivirus bloquea ese canal (ERR_BLOCKED_BY_CLIENT).
+  // Así la app va rápida y en tiempo real, pero sigue funcionando en redes que bloquean el streaming.
+  const COMMON = { ignoreUndefinedProperties: true, experimentalAutoDetectLongPolling: true };
   try { fs = F.initializeFirestore(app, { ...COMMON, localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }); }
   catch (e) { fs = F.initializeFirestore(app, COMMON); }
 
