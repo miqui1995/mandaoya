@@ -1,10 +1,11 @@
 // MandaoYa – pantalla de SEGUIMIENTO del pedido (cliente o cualquiera con el enlace)
 import { $, esc, money, toast, ask, sheet, closeSheet, PAY, STATUS, stepper, hhmm, waLink, telLink, orderEta, haversine, fdist,
   makeMap, ICONS, fitTo, beep, VEHICLES, trackUrl } from './ui.js';
+import { mountChat } from './chat.js';
 
 export function mount(root, ctx, id) {
   const { db } = ctx;
-  let map = null, mk = {}, lastStatus = null, fitted = false, o = null;
+  let map = null, mk = {}, lastStatus = null, fitted = false, o = null, chatUnsub = null;
   root.innerHTML = `<div class="pad"><button class="link" id="sBack">‹ Volver</button><div id="sTop"></div></div>
     <div id="sMap" class="map tall"></div><div class="pad" id="sInfo"></div>`;
   $('#sBack', root).onclick = () => { location.hash = ''; };
@@ -68,6 +69,7 @@ export function mount(root, ctx, id) {
           ${o.pay !== 'efectivo' && o.active ? `<p class="note">Paga por ${PAY[o.pay]} al número de la tienda${o.storePhone ? ' (' + esc(o.storePhone) + ')' : ''} y muéstrale el comprobante al domiciliario.</p>` : ''}
         </div></div>
       ${o.storePhone ? `<div class="row"><a class="btn" href="${telLink(o.storePhone)}">Llamar a la tienda</a><a class="btn" target="_blank" href="${waLink(o.storePhone, `Hola, sobre mi pedido #${o.code}`)}">WhatsApp tienda</a></div>` : ''}
+      <div id="sChat"></div>
       <button class="btn block" id="sShare">Compartir seguimiento</button>
       ${canCancel ? '<button class="btn danger block" id="sCancel">Cancelar pedido</button>' : ''}
       ${o.status === 'entregado' && mineAsClient && !o.rating ? `<div class="card center"><b>¿Cómo te fue?</b><div class="stars" id="sStars">${[1, 2, 3, 4, 5].map(n => `<button data-r="${n}">★</button>`).join('')}</div></div>` : ''}
@@ -86,7 +88,12 @@ export function mount(root, ctx, id) {
     };
     const st = $('#sStars', root);
     if (st) st.onclick = async e => { const r = e.target.closest('[data-r]'); if (!r) return; await db.update('orders', o.id, { rating: +r.dataset.r }); toast('¡Gracias por calificar!'); renderInfo(); };
+    // Chat del pedido: solo para los participantes (cliente, tienda o domiciliario) mientras el pedido está activo.
+    if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+    const amMember = db.uid && (o.clientUid === db.uid || o.storeId === db.uid || o.courierUid === db.uid);
+    const chatBox = $('#sChat', root);
+    if (chatBox && amMember && o.active) chatUnsub = mountChat(chatBox, ctx, o.id, o);
   }
 
-  return () => { unsub(); clearInterval(tick); map && map.remove(); };
+  return () => { unsub(); if (chatUnsub) chatUnsub(); clearInterval(tick); map && map.remove(); };
 }

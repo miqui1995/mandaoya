@@ -336,7 +336,8 @@ async function register(role) {
       <p class="note">${ctx.settings.courierAutoApprove ? 'Si cumples todos los requisitos, <b>tu cuenta se activa de inmediato</b> en nivel de prueba.' : 'El administrador revisará tus documentos antes de activarte.'}</p>
       <div class="reqs">
         <button class="req" data-req="selfie"><span class="rq-ico">🤳</span><span><b>Foto tuya (selfie)</b><small>De frente, con buena luz</small></span><span class="rq-st">Pendiente</span></button>
-        <button class="req" data-req="idPhoto"><span class="rq-ico">🪪</span><span><b>Foto de tu cédula</b><small>Por el frente, que se lea</small></span><span class="rq-st">Pendiente</span></button>
+        <button class="req" data-req="idPhoto"><span class="rq-ico">🪪</span><span><b>Cédula por el frente</b><small>Que se lea bien</small></span><span class="rq-st">Pendiente</span></button>
+        <button class="req" data-req="idBack"><span class="rq-ico">🪪</span><span><b>Cédula por el respaldo</b><small>El reverso, que se lea</small></span><span class="rq-st">Pendiente</span></button>
         <button class="req" data-req="vehiclePhoto" id="rqVeh"><span class="rq-ico">🛵</span><span><b>Foto del vehículo</b><small>Donde se vea la placa si tiene</small></span><span class="rq-st">Pendiente</span></button>
         <button class="req" data-req="gps"><span class="rq-ico">📍</span><span><b>GPS activo en la zona</b><small>Verifica que tu celular comparte ubicación</small></span><span class="rq-st">Pendiente</span></button>
       </div>
@@ -366,7 +367,7 @@ async function register(role) {
     $('#rqFile').onchange = async e => {
       const f = e.target.files[0]; e.target.value = ''; if (!f || !pending) return;
       setSt(pending, false, 'Procesando…');
-      try { req[pending] = await photoToDataURL(f, pending === 'idPhoto' ? 900 : 480, 0.6); setSt(pending, true); }
+      try { req[pending] = await photoToDataURL(f, (pending === 'idPhoto' || pending === 'idBack') ? 900 : 480, 0.6); setSt(pending, true); }
       catch (err) { setSt(pending, false); toast('No se pudo leer la foto'); }
     };
     $('.reqs').onclick = async e => {
@@ -400,7 +401,7 @@ async function register(role) {
     // --- 1) Validación local (antes de verificar el teléfono, para no gastar un SMS en balde) ---
     if (role === 'domiciliario') {
       const veh = $('#rVeh').value;
-      const missing = [!req.selfie && 'selfie', !req.idPhoto && 'foto de la cédula', veh !== 'pie' && !req.vehiclePhoto && 'foto del vehículo', !req.gps && 'verificar GPS',
+      const missing = [!req.selfie && 'selfie', !req.idPhoto && 'cédula por el frente', !req.idBack && 'cédula por el respaldo', veh !== 'pie' && !req.vehiclePhoto && 'foto del vehículo', !req.gps && 'verificar GPS',
         !$('#rAdult').checked && 'confirmar que eres mayor de edad', !$('#rTerms').checked && 'aceptar el compromiso'].filter(Boolean);
       if (missing.length) return toast('Falta: ' + missing.join(', '), 5000);
       if (ctx.settings.requireInvite) {
@@ -412,7 +413,7 @@ async function register(role) {
       const welcome = ctx.settings.prepaidEnabled ? +(ctx.settings.welcomeCredit || 0) : 0;
       Object.assign(user, { vehicle: veh, plate: $('#rPlate').value.trim().toUpperCase(), online: false, approved: auto, level: 'prueba', autoApproved: auto, inviteCode,
         balance: welcome, welcomeCredit: welcome,
-        requirements: { selfie: true, idPhoto: true, vehiclePhoto: !!req.vehiclePhoto, gps: true, adult: true, terms: true } });
+        requirements: { selfie: true, idPhoto: true, idBack: true, vehiclePhoto: !!req.vehiclePhoto, gps: true, adult: true, terms: true } });
     }
     if (role === 'tendero') {
       const sname = $('#rStore').value.trim();
@@ -435,7 +436,7 @@ async function register(role) {
     // --- 3) Escrituras (ya con la identidad correcta) ---
     $('#rSave').disabled = true;
     if (role === 'domiciliario') {
-      try { await ctx.db.set('courierDocs', ctx.db.uid, { selfie: req.selfie, idPhoto: req.idPhoto, vehiclePhoto: req.vehiclePhoto || null, gps: req.gps, createdAt: Date.now() }); }
+      try { await ctx.db.set('courierDocs', ctx.db.uid, { selfie: req.selfie, idPhoto: req.idPhoto, idBack: req.idBack, vehiclePhoto: req.vehiclePhoto || null, gps: req.gps, createdAt: Date.now() }); }
       catch (e) { $('#rSave').disabled = false; return toast('No se pudieron subir los documentos: ' + (e.message || e)); }
     }
     if (role === 'tendero') {

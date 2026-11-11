@@ -201,6 +201,19 @@ service cloud.firestore {
          || (resource.data.status == 'entregado' && changed().hasOnly(['rating']))))
       );
       allow delete: if isAdmin();
+
+      // Chat del pedido: mensajes entre el cliente, la tienda y el domiciliario de ESE pedido
+      match /messages/{mid} {
+        function order() { return get(/databases/$(database)/documents/orders/$(id)).data; }
+        function member() { return isAdmin() || order().clientUid == uid() || order().storeId == uid() || order().courierUid == uid(); }
+        allow read: if signedIn() && member();
+        allow create: if signedIn() && member()
+          && request.resource.data.by == uid()
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500;
+        allow update, delete: if false;
+      }
     }
   }
 }

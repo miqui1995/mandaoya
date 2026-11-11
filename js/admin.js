@@ -265,7 +265,7 @@ export function mount(root, ctx) {
         const d = await db.get('courierDocs', uid);
         if (!d) return toast('Este domiciliario no subió documentos');
         sheet(`<h2>Documentos de ${esc(u.name)}</h2>
-          <div class="docs">${[['selfie', 'Selfie'], ['idPhoto', 'Cédula'], ['vehiclePhoto', 'Vehículo']].filter(([k]) => d[k]).map(([k, l]) => `<figure><img src="${d[k]}" alt=""><figcaption>${l}</figcaption></figure>`).join('')}</div>
+          <div class="docs">${[['selfie', 'Selfie'], ['idPhoto', 'Cédula (frente)'], ['idBack', 'Cédula (respaldo)'], ['vehiclePhoto', 'Vehículo']].filter(([k]) => d[k]).map(([k, l]) => `<figure><img src="${d[k]}" alt=""><figcaption>${l}</figcaption></figure>`).join('')}</div>
           ${d.gps ? `<p class="note">GPS al registrarse: ${d.gps.lat}, ${d.gps.lng} (±${d.gps.acc} m)</p>` : ''}
           <p class="note">Compara la selfie con la cédula y llama al número ${esc(u.phone)} si tienes dudas.</p>`);
       }
